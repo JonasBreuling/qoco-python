@@ -144,6 +144,8 @@ public:
     // QOCOInt update_matrix_data(py::object, py::object, py::object);
 
     QOCOInt solve();
+    
+    py::array_t<QOCOFloat> solve_kkt(py::array_t<QOCOFloat> rhs);
 
 private:
     QOCOInt n;
@@ -241,6 +243,33 @@ QOCOInt PyQOCOSolver::update_settings(const QOCOSettings &new_settings)
     return qoco_update_settings(this->_solver, &new_settings);
 }
 
+py::array_t<QOCOFloat> PyQOCOSolver::solve_kkt(py::array_t<QOCOFloat> rhs)
+{
+    auto buf = rhs.request();
+    if (buf.ndim != 1)
+        throw std::runtime_error("rhs must be 1-D array");
+    
+    QOCOInt kkt_size = this->n + this->m + this->p;
+    if (buf.shape[0] != kkt_size)
+        throw std::runtime_error("rhs size must be n + m + p = " + std::to_string(kkt_size));
+    
+    // Create output array for solution
+    auto sol = py::array_t<QOCOFloat>(kkt_size);
+    auto sol_buf = sol.request();
+    
+    QOCOFloat *rhs_ptr = (QOCOFloat *)buf.ptr;
+    QOCOFloat *sol_ptr = (QOCOFloat *)sol_buf.ptr;
+    
+    // Call qoco_kkt_solve
+    {
+        py::gil_scoped_release release;
+        qoco_kkt_solve(this->_solver, rhs_ptr, sol_ptr);
+        py::gil_scoped_acquire acquire;
+    }
+    
+    return sol;
+}
+
 PYBIND11_MODULE(@QOCO_EXT_MODULE_NAME@, m)
 {
     // Enums.
@@ -309,5 +338,6 @@ PYBIND11_MODULE(@QOCO_EXT_MODULE_NAME@, m)
         .def_property_readonly("solution", &PyQOCOSolver::get_solution, py::return_value_policy::reference)
         .def("update_settings", &PyQOCOSolver::update_settings)
         .def("solve", &PyQOCOSolver::solve)
-        .def("get_settings", &PyQOCOSolver::get_settings, py::return_value_policy::reference);
+        .def("get_settings", &PyQOCOSolver::get_settings, py::return_value_policy::reference)
+        .def("solve_kkt", &PyQOCOSolver::solve_kkt, "rhs"_a.noconvert(), "Solve the factorized KKT system with the given RHS vector");
 }

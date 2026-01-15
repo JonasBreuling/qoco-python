@@ -169,3 +169,30 @@ class QOCO:
             status=self.solvecodes[self._solver.solution.status],
         )
         return results
+
+    def solve_kkt(self, rhs):
+        """
+        Solve the factorized KKT system with the given RHS vector.
+        
+        Parameters
+        ----------
+        rhs : np.ndarray
+            Right-hand side vector of size (n + m + p,)
+        
+        Returns
+        -------
+        np.ndarray
+            Solution vector of size (n + m + p,)
+        """
+        if not isinstance(rhs, np.ndarray):
+            rhs = np.array(rhs)
+        
+        rhs = rhs.astype(np.float64)
+        
+        if rhs.ndim != 1:
+            raise ValueError("rhs must be a 1-D array")
+        
+        if rhs.shape[0] != self.n + self.m + self.p:
+            raise ValueError(f"rhs size must be n + m + p = {self.n + self.m + self.p}")
+        
+        return self._solver.solve_kkt(rhs)
