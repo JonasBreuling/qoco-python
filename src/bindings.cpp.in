@@ -145,7 +145,8 @@ public:
 
     QOCOInt solve();
     
-    py::array_t<QOCOFloat> solve_kkt(py::array_t<QOCOFloat> rhs);
+    py::array_t<QOCOFloat> solve_kkt(py::array_t<QOCOFloat> rhs, QOCOInt iter_ref_iters);
+    py::array_t<QOCOFloat> kkt_multiply(py::array_t<QOCOFloat> x);
 
 private:
     QOCOInt n;
@@ -243,7 +244,7 @@ QOCOInt PyQOCOSolver::update_settings(const QOCOSettings &new_settings)
     return qoco_update_settings(this->_solver, &new_settings);
 }
 
-py::array_t<QOCOFloat> PyQOCOSolver::solve_kkt(py::array_t<QOCOFloat> rhs)
+py::array_t<QOCOFloat> PyQOCOSolver::solve_kkt(py::array_t<QOCOFloat> rhs, QOCOInt iter_ref_iters)
 {
     auto buf = rhs.request();
     if (buf.ndim != 1)
@@ -263,11 +264,38 @@ py::array_t<QOCOFloat> PyQOCOSolver::solve_kkt(py::array_t<QOCOFloat> rhs)
     // Call qoco_kkt_solve
     {
         py::gil_scoped_release release;
-        qoco_kkt_solve(this->_solver, rhs_ptr, sol_ptr);
+        qoco_kkt_solve(this->_solver, rhs_ptr, sol_ptr, iter_ref_iters);
         py::gil_scoped_acquire acquire;
     }
     
     return sol;
+}
+
+py::array_t<QOCOFloat> PyQOCOSolver::kkt_multiply(py::array_t<QOCOFloat> x)
+{
+    auto buf = x.request();
+    if (buf.ndim != 1)
+        throw std::runtime_error("x must be 1-D array");
+    
+    QOCOInt kkt_size = this->n + this->m + this->p;
+    if (buf.shape[0] != kkt_size)
+        throw std::runtime_error("x size must be n + m + p = " + std::to_string(kkt_size));
+    
+    // Create output array
+    auto y = py::array_t<QOCOFloat>(kkt_size);
+    auto y_buf = y.request();
+    
+    QOCOFloat *x_ptr = (QOCOFloat *)buf.ptr;
+    QOCOFloat *y_ptr = (QOCOFloat *)y_buf.ptr;
+    
+    // Call qoco_kkt_multiply
+    {
+        py::gil_scoped_release release;
+        qoco_kkt_multiply(this->_solver, x_ptr, y_ptr);
+        py::gil_scoped_acquire acquire;
+    }
+    
+    return y;
 }
 
 PYBIND11_MODULE(@QOCO_EXT_MODULE_NAME@, m)
@@ -339,5 +367,6 @@ PYBIND11_MODULE(@QOCO_EXT_MODULE_NAME@, m)
         .def("update_settings", &PyQOCOSolver::update_settings)
         .def("solve", &PyQOCOSolver::solve)
         .def("get_settings", &PyQOCOSolver::get_settings, py::return_value_policy::reference)
-        .def("solve_kkt", &PyQOCOSolver::solve_kkt, "rhs"_a.noconvert(), "Solve the factorized KKT system with the given RHS vector");
+        .def("solve_kkt", &PyQOCOSolver::solve_kkt, "rhs"_a.noconvert(), "iter_ref_iters"_a = 0)
+        .def("kkt_multiply", &PyQOCOSolver::kkt_multiply, "x"_a.noconvert());
 }

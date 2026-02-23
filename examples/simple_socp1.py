@@ -36,7 +36,11 @@ if __name__ == "__main__":
     assert res.status == "QOCO_SOLVED"
     assert abs(res.obj - opt_obj) <= 1e-4
 
-    rhs = np.zeros(prob.n + prob.m + prob.p)
+    rhs = np.ones(prob.n + prob.m + prob.p)
     sol = prob.solve_kkt(rhs)
 
-    print("Solution:", sol)
+    product = prob.kkt_multiply(sol)
+    assert np.allclose(product, rhs, atol=1e-8)
+
+    print("sol:", sol)
+    print("KKT @ sol:", product)
