@@ -5,3 +5,4 @@ __pycache__/
 qoco_custom*/
 src/bindings.cpp
 dist/
+myvenv
