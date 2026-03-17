@@ -144,6 +144,8 @@ public:
     void update_matrix_data(py::object Pxnew, py::object Axnew, py::object Gxnew);
 
     QOCOInt solve();
+    py::array_t<QOCOFloat> solve_kkt(py::array_t<QOCOFloat> rhs, QOCOInt iter_ref_iters);
+    py::array_t<QOCOFloat> kkt_multiply(py::array_t<QOCOFloat> x);
 
 private:
     QOCOInt n;
@@ -313,6 +315,61 @@ void PyQOCOSolver::update_matrix_data(py::object Pxnew, py::object Axnew, py::ob
     qoco_update_matrix_data(this->_solver, Pxnew_ptr, Axnew_ptr, Gxnew_ptr);
 }
 
+
+py::array_t<QOCOFloat> PyQOCOSolver::solve_kkt(py::array_t<QOCOFloat> rhs, QOCOInt iter_ref_iters)
+{
+    auto buf = rhs.request();
+    if (buf.ndim != 1)
+        throw std::runtime_error("rhs must be 1-D array");
+
+    QOCOInt kkt_size = this->n + this->m + this->p;
+    if (buf.shape[0] != kkt_size)
+        throw std::runtime_error("rhs size must be n + m + p = " + std::to_string(kkt_size));
+
+    // Create output array for solution
+    auto sol = py::array_t<QOCOFloat>(kkt_size);
+    auto sol_buf = sol.request();
+
+    QOCOFloat *rhs_ptr = (QOCOFloat *)buf.ptr;
+    QOCOFloat *sol_ptr = (QOCOFloat *)sol_buf.ptr;
+
+    // Call qoco_kkt_solve
+    {
+        py::gil_scoped_release release;
+        qoco_kkt_solve(this->_solver, rhs_ptr, sol_ptr, iter_ref_iters);
+        py::gil_scoped_acquire acquire;
+    }
+
+    return sol;
+}
+
+py::array_t<QOCOFloat> PyQOCOSolver::kkt_multiply(py::array_t<QOCOFloat> x)
+{
+    auto buf = x.request();
+    if (buf.ndim != 1)
+        throw std::runtime_error("x must be 1-D array");
+
+    QOCOInt kkt_size = this->n + this->m + this->p;
+    if (buf.shape[0] != kkt_size)
+        throw std::runtime_error("x size must be n + m + p = " + std::to_string(kkt_size));
+
+    // Create output array
+    auto y = py::array_t<QOCOFloat>(kkt_size);
+    auto y_buf = y.request();
+
+    QOCOFloat *x_ptr = (QOCOFloat *)buf.ptr;
+    QOCOFloat *y_ptr = (QOCOFloat *)y_buf.ptr;
+
+    // Call qoco_kkt_multiply
+    {
+        py::gil_scoped_release release;
+        qoco_kkt_multiply(this->_solver, x_ptr, y_ptr);
+        py::gil_scoped_acquire acquire;
+    }
+
+    return y;
+}
+
 PYBIND11_MODULE(@QOCO_EXT_MODULE_NAME@, m)
 {
     // Enums.
@@ -383,5 +440,7 @@ PYBIND11_MODULE(@QOCO_EXT_MODULE_NAME@, m)
         .def("update_vector_data", &PyQOCOSolver::update_vector_data, "cnew"_a=py::none(), "bnew"_a=py::none(), "hnew"_a=py::none())
         .def("update_matrix_data", &PyQOCOSolver::update_matrix_data, "Pxnew"_a=py::none(), "Axnew"_a=py::none(), "Gxnew"_a=py::none())
         .def("solve", &PyQOCOSolver::solve)
-        .def("get_settings", &PyQOCOSolver::get_settings, py::return_value_policy::reference);
+        .def("get_settings", &PyQOCOSolver::get_settings, py::return_value_policy::reference)
+        .def("solve_kkt", &PyQOCOSolver::solve_kkt, "rhs"_a.noconvert(), "iter_ref_iters"_a = 0)
+        .def("kkt_multiply", &PyQOCOSolver::kkt_multiply, "x"_a.noconvert());
 }

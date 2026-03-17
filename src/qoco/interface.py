@@ -246,3 +246,80 @@ class QOCO:
             status=self.solvecodes[self._solver.solution.status],
         )
         return results
+
+    def solve_kkt(self, rhs, iter_ref_iters=0):
+        """
+        Solves the KKT system using the existing factorization.
+        
+        Solves the perturbed KKT system Kx = rhs using the existing factorization.
+        The solver must have been set up and factorized (i.e. qoco_solve must be
+        called at least once first). Calling this function before qoco_solve will
+        return an error.
+        
+        Parameters
+        ----------
+        rhs : np.ndarray
+            Right-hand side vector of size (n + m + p,)
+        iter_ref_iters : int, optional
+            Number of iterative refinement steps to perform. Default is 0.
+            Must be non-negative.
+        
+        Returns
+        -------
+        np.ndarray
+            Solution vector of size (n + m + p,)
+        """
+        if not isinstance(rhs, np.ndarray):
+            rhs = np.array(rhs)
+
+        rhs = rhs.astype(np.float64)
+
+        if rhs.ndim != 1:
+            raise ValueError("rhs must be a 1-D array")
+
+        if rhs.shape[0] != self.n + self.m + self.p:
+            raise ValueError(f"rhs size must be n + m + p = {self.n + self.m + self.p}")
+
+        # Treat None as 0 for compatibility; convert to int and validate
+        if iter_ref_iters is None:
+            iter_ref_iters = 0
+        iter_ref_iters = int(iter_ref_iters)
+        if iter_ref_iters < 0:
+            raise ValueError("iter_ref_iters must be non-negative")
+        return self._solver.solve_kkt(rhs, iter_ref_iters)
+
+    def kkt_multiply(self, x):
+        """
+        Multiply the unperturbed KKT matrix by a vector.
+        
+        Computes y = K @ x using the factorized system and the current
+        Nesterov-Todd scaling. This applies the original (unregularized) KKT
+        matrix multiplication.
+        
+        Parameters
+        ----------
+        x : np.ndarray
+            Input vector of size (n + m + p,)
+        
+        Returns
+        -------
+        np.ndarray
+            Output vector y = K @ x of size (n + m + p,)
+        
+        Raises
+        ------
+        ValueError
+            If solver has not been solved yet (must call solve() first)
+        """
+        if not isinstance(x, np.ndarray):
+            x = np.array(x)
+
+        x = x.astype(np.float64)
+
+        if x.ndim != 1:
+            raise ValueError("x must be a 1-D array")
+
+        if x.shape[0] != self.n + self.m + self.p:
+            raise ValueError(f"x size must be n + m + p = {self.n + self.m + self.p}")
+
+        return self._solver.kkt_multiply(x)
